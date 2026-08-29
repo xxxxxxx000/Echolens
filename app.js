@@ -267,6 +267,58 @@ function initHudMiniMap() {
   });
 }
 
+function registerPWA() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('PWA ServiceWorker ready:', reg.scope))
+        .catch(err => console.warn('PWA registration notice:', err));
+    });
+  }
+
+  let deferredInstallPrompt = null;
+  const pwaBanner = document.getElementById('pwa-install-banner');
+  const btnInstall = document.getElementById('btn-pwa-install');
+  const btnDismiss = document.getElementById('btn-pwa-dismiss');
+
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const dismissed = sessionStorage.getItem('echolens_pwa_dismissed') === 'true';
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (!isStandalone && !dismissed && pwaBanner) {
+      setTimeout(() => {
+        pwaBanner.classList.remove('hidden');
+      }, 1800);
+    }
+  });
+
+  btnInstall?.addEventListener('click', async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        pwaBanner?.classList.add('hidden');
+      }
+      deferredInstallPrompt = null;
+    } else {
+      speak('To install EchoLens, tap your browser menu or Share, then Add to Home Screen.');
+      pwaBanner?.classList.add('hidden');
+    }
+  });
+
+  btnDismiss?.addEventListener('click', () => {
+    pwaBanner?.classList.add('hidden');
+    sessionStorage.setItem('echolens_pwa_dismissed', 'true');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    pwaBanner?.classList.add('hidden');
+    speak('EchoLens installed successfully.');
+  });
+}
+
 async function init() {
   cache();
   initVoices();
@@ -278,6 +330,7 @@ async function init() {
   renderFindChips();
   bind();
   initHudMiniMap();
+  registerPWA();
   await loadModel();
 }
 

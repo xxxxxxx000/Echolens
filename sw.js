@@ -1,9 +1,14 @@
 // EchoLens — Production Progressive Web App (PWA) Service Worker
-const CACHE_NAME = 'echolens-pwa-v3';
+const CACHE_NAME = 'echolens-pwa-v4';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
+  '/style.css',
+  '/app.js',
+  '/i18n.js',
+  '/maps.js',
   '/manifest.json',
+  '/favicon.svg',
 ];
 
 // Install Event — Pre-cache App Shell

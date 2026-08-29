@@ -1,22 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#7c62fa"/>
-      <stop offset="100%" stop-color="#4c38b5"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="#08090b"/>
+  <rect x="6" y="6" width="500" height="500" rx="106" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="6"/>
   <!-- Sound wave arcs -->
-  <path d="M180 256a76 76 0 0 1 76-76" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="14" stroke-linecap="round"/>
-  <path d="M145 256a111 111 0 0 1 111-111" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="12" stroke-linecap="round"/>
-  <path d="M115 256a141 141 0 0 1 141-141" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="10" stroke-linecap="round"/>
-  <path d="M332 256a76 76 0 0 1-76 76" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="14" stroke-linecap="round"/>
-  <path d="M367 256a111 111 0 0 1-111 111" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="12" stroke-linecap="round"/>
-  <path d="M397 256a141 141 0 0 1-141 141" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="10" stroke-linecap="round"/>
-  <!-- Eye shape -->
-  <path d="M100 256 C180 180, 332 180, 412 256 C332 332, 180 332, 100 256Z" fill="none" stroke="#fff" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M180 256a76 76 0 0 1 76-76" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M145 256a111 111 0 0 1 111-111" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M332 256a76 76 0 0 1-76 76" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M367 256a111 111 0 0 1-111 111" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="12" stroke-linecap="round"/>
+  <!-- Eye vision shape -->
+  <path d="M100 256 C180 176, 332 176, 412 256 C332 336, 180 336, 100 256Z" fill="none" stroke="#ffffff" stroke-width="18" stroke-linejoin="round"/>
   <!-- Lens center -->
-  <circle cx="256" cy="256" r="42" fill="#fff"/>
-  <circle cx="256" cy="256" r="22" fill="url(#bg)"/>
-  <circle cx="244" cy="246" r="8" fill="rgba(255,255,255,0.6)"/>
+  <circle cx="256" cy="256" r="44" fill="#ffffff"/>
+  <circle cx="256" cy="256" r="24" fill="#08090b"/>
+  <circle cx="242" cy="244" r="9" fill="#ffffff"/>
 </svg>

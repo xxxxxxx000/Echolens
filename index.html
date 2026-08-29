@@ -668,5 +668,31 @@
     </div>
   </div>
 
+  <!-- 📲 Floating PWA Install Banner Popup -->
+  <aside class="pwa-install-banner hidden" id="pwa-install-banner" role="dialog" aria-label="Install EchoLens App">
+    <div class="pwa-banner-left">
+      <div class="pwa-app-icon">
+        <svg viewBox="0 0 512 512" width="22" height="22" fill="none">
+          <circle cx="256" cy="256" r="240" fill="#ffffff"/>
+          <path d="M100 256 C180 176, 332 176, 412 256 C332 336, 180 336, 100 256Z" fill="none" stroke="#08090b" stroke-width="28"/>
+          <circle cx="256" cy="256" r="48" fill="#08090b"/>
+          <circle cx="242" cy="242" r="14" fill="#ffffff"/>
+        </svg>
+      </div>
+      <div class="pwa-banner-text">
+        <strong>Install EchoLens</strong>
+        <small>Fast, offline spatial vision</small>
+      </div>
+    </div>
+    <div class="pwa-banner-actions">
+      <button type="button" class="btn-pwa-install" id="btn-pwa-install">Install</button>
+      <button type="button" class="btn-pwa-dismiss" id="btn-pwa-dismiss" aria-label="Dismiss installation">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+          <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
 </body>
 </html>

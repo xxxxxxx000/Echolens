@@ -1,12 +1,21 @@
 {
-  "name": "EchoLens",
+  "name": "EchoLens — Spatial Vision",
   "short_name": "EchoLens",
-  "description": "Hear the chair on your left. On-device stereo object cues. Not a cane.",
+  "description": "Assistive spatial vision and 3D audio orientation interface for obstacle awareness.",
   "start_url": "/",
+  "id": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f6f3ee",
-  "theme_color": "#6d54e8",
-  "categories": ["accessibility", "utilities"]
+  "background_color": "#08090b",
+  "theme_color": "#08090b",
+  "categories": ["accessibility", "utilities", "navigation"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
