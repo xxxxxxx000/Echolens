@@ -38,61 +38,134 @@ export function saveGoogleKey(key) {
   } catch { /* ignore */ }
 }
 
-export function startLocationWatch(onFix, onError) {
-  // 1. Instant IP geolocation fallback so map immediately jumps to user's real city/location
-  if (!lastFix) {
-    fetch('https://ipapi.co/json/')
-      .then(res => res.json())
-      .then(data => {
-        if (data.latitude && data.longitude && !lastFix) {
-          lastFix = {
-            lat: data.latitude,
-            lon: data.longitude,
-            accuracy: 1200,
-            city: data.city || 'Your City',
-            region: data.region || '',
-            heading: 0,
-          };
-          onFix?.(lastFix);
-          updateMiniMapMarker(lastFix.lat, lastFix.lon, 0);
-        }
-      })
-      .catch(() => {});
-  }
+async function fetchIpLocation() {
+  const providers = [
+    async () => {
+      const res = await fetch('https://ipwho.is/');
+      const d = await res.json();
+      if (d && d.success && typeof d.latitude === 'number') {
+        return {
+          lat: d.latitude,
+          lon: d.longitude,
+          city: d.city || d.region || 'Live Area',
+          region: d.region || '',
+          accuracy: 800,
+        };
+      }
+      throw new Error('ipwhois failed');
+    },
+    async () => {
+      const res = await fetch('https://freeipapi.com/api/json');
+      const d = await res.json();
+      if (d && typeof d.latitude === 'number') {
+        return {
+          lat: d.latitude,
+          lon: d.longitude,
+          city: d.cityName || d.regionName || 'Live Area',
+          region: d.regionName || '',
+          accuracy: 900,
+        };
+      }
+      throw new Error('freeipapi failed');
+    },
+    async () => {
+      const res = await fetch('https://ipapi.co/json/');
+      const d = await res.json();
+      if (d && typeof d.latitude === 'number') {
+        return {
+          lat: d.latitude,
+          lon: d.longitude,
+          city: d.city || d.region || 'Live Area',
+          region: d.region || '',
+          accuracy: 1000,
+        };
+      }
+      throw new Error('ipapi failed');
+    }
+  ];
 
-  // 2. High-Accuracy Hardware GPS
+  for (const fn of providers) {
+    try {
+      const loc = await fn();
+      if (loc && typeof loc.lat === 'number' && typeof loc.lon === 'number') {
+        return loc;
+      }
+    } catch {
+      // try next provider
+    }
+  }
+  return null;
+}
+
+export function startLocationWatch(onFix, onError) {
+  // 1. Instant Multi-Provider Network Geolocation (Resolves in < 300ms)
+  fetchIpLocation().then((netLoc) => {
+    if (netLoc && (!lastFix || (lastFix.accuracy && lastFix.accuracy > 500))) {
+      lastFix = {
+        lat: netLoc.lat,
+        lon: netLoc.lon,
+        accuracy: netLoc.accuracy,
+        city: netLoc.city,
+        region: netLoc.region,
+        heading: lastFix?.heading || 0,
+      };
+      onFix?.(lastFix);
+      updateMiniMapMarker(lastFix.lat, lastFix.lon, lastFix.heading);
+      updateFullCanvasMap(lastFix.lat, lastFix.lon, lastFix.heading);
+    }
+  }).catch(() => {});
+
+  // 2. High-Accuracy Hardware / WiFi GPS
   if ('geolocation' in navigator) {
+    // Fast initial fix (low accuracy avoids Windows / laptop hardware GPS timeouts)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         lastFix = {
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
+          accuracy: pos.coords.accuracy || 20,
           heading: pos.coords.heading || lastFix?.heading || 0,
           speed: pos.coords.speed,
         };
         onFix?.(lastFix);
         updateMiniMapMarker(lastFix.lat, lastFix.lon, lastFix.heading);
+        updateFullCanvasMap(lastFix.lat, lastFix.lon, lastFix.heading);
       },
       () => {},
-      { enableHighAccuracy: true, timeout: 6000 }
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 }
     );
 
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        lastFix = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          heading: pos.coords.heading || lastFix?.heading || 0,
-          speed: pos.coords.speed,
-        };
-        onFix?.(lastFix);
-        updateMiniMapMarker(lastFix.lat, lastFix.lon, lastFix.heading);
-      },
-      (err) => onError?.(err),
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
-    );
+    // Continuous Watch Position with automatic fallback
+    function startWatch(highAccuracy = true) {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          lastFix = {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || 15,
+            heading: pos.coords.heading || lastFix?.heading || 0,
+            speed: pos.coords.speed,
+          };
+          onFix?.(lastFix);
+          updateMiniMapMarker(lastFix.lat, lastFix.lon, lastFix.heading);
+          updateFullCanvasMap(lastFix.lat, lastFix.lon, lastFix.heading);
+        },
+        (err) => {
+          if (highAccuracy && err.code === 3) {
+            // Timeout on high accuracy -> switch to network accuracy
+            startWatch(false);
+          } else {
+            onError?.(err);
+          }
+        },
+        { enableHighAccuracy: highAccuracy, maximumAge: 4000, timeout: highAccuracy ? 10000 : 15000 }
+      );
+    }
+
+    startWatch(true);
   }
 
   // 3. Real-time Compass Sensor for True Directional Orientation
@@ -105,6 +178,7 @@ export function startLocationWatch(onFix, onError) {
       if (heading !== null && heading !== undefined && lastFix) {
         lastFix.heading = Math.round(heading);
         updateMiniMapMarker(lastFix.lat, lastFix.lon, lastFix.heading);
+        updateFullCanvasMap(lastFix.lat, lastFix.lon, lastFix.heading);
       }
     }, true);
   }
@@ -118,14 +192,40 @@ export function stopLocationWatch() {
 }
 
 export async function reverseGeocode(lat, lon) {
-  const url = `${NOMINATIM}/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=18&addressdetails=1`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error('Address lookup failed');
-  const data = await res.json();
-  lastAddress = data.display_name || '';
-  return data;
+  try {
+    const url = `${NOMINATIM}/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=18&addressdetails=1`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.display_name) {
+        lastAddress = data.display_name;
+        return data;
+      }
+    }
+  } catch { /* try fallback */ }
+
+  try {
+    const fallbackUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`;
+    const res = await fetch(fallbackUrl);
+    if (res.ok) {
+      const d = await res.json();
+      const parts = [d.locality, d.city, d.principalSubdivision, d.countryName].filter(Boolean);
+      const name = parts.join(', ') || `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+      lastAddress = name;
+      return {
+        display_name: name,
+        address: {
+          road: d.locality || d.city || '',
+          suburb: d.locality || '',
+          city: d.city || '',
+          country: d.countryName || ''
+        }
+      };
+    }
+  } catch { /* fallback to coords */ }
+
+  lastAddress = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+  return { display_name: lastAddress, address: {} };
 }
 
 export async function nearbyPlaces(lat, lon, radius = 250) {
@@ -149,38 +249,258 @@ export async function nearbyPlaces(lat, lon, radius = 250) {
   return lastPlaces;
 }
 
+/* ── 🗺️ Direct Canvas Full Map Engine (100% Solid, Zero Tile Drop, High-DPI) ── */
+
+let fullMapState = {
+  container: null,
+  canvas: null,
+  ctx: null,
+  lat: 20.0,
+  lon: 0.0,
+  zoom: 16,
+  heading: 0,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  centerOffsetX: 0,
+  centerOffsetY: 0,
+};
+
 export function initLeafletMap(container) {
-  if (typeof window.L === 'undefined' || !container) return null;
-  if (leafletMap) {
-    setTimeout(() => leafletMap.invalidateSize(), 80);
-    return leafletMap;
-  }
-  const center = lastFix ? [lastFix.lat, lastFix.lon] : [20, 0];
-  const zoom = lastFix ? 17 : 2;
-  leafletMap = window.L.map(container, { zoomControl: true }).setView(center, zoom);
-  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
-  }).addTo(leafletMap);
-  setTimeout(() => leafletMap.invalidateSize(), 80);
-  return leafletMap;
+  return initFullCanvasMap(container);
 }
 
-export function updateLeafletMarker(lat, lon) {
-  if (!leafletMap || typeof window.L === 'undefined') return;
-  const pos = [lat, lon];
-  if (!leafletMarker) {
-    leafletMarker = window.L.circleMarker(pos, {
-      radius: 10,
-      color: '#ffffff',
-      weight: 3,
-      fillColor: '#6d54e8',
-      fillOpacity: 1,
-    }).addTo(leafletMap);
-  } else {
-    leafletMarker.setLatLng(pos);
+export function updateLeafletMarker(lat, lon, heading = 0) {
+  updateFullCanvasMap(lat, lon, heading);
+}
+
+export function initFullCanvasMap(container) {
+  if (!container) return null;
+  container.innerHTML = '';
+  container.style.position = 'relative';
+  container.style.overflow = 'hidden';
+  container.style.backgroundColor = '#08090b';
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'full-canvas-live-map';
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.style.display = 'block';
+  canvas.style.cursor = 'grab';
+  container.appendChild(canvas);
+
+  // Floating map zoom & recenter controls
+  const controls = document.createElement('div');
+  controls.className = 'canvas-map-controls';
+  controls.innerHTML = `
+    <button type="button" class="btn-map-ctrl" id="btn-map-zoom-in" title="Zoom In" aria-label="Zoom In">+</button>
+    <button type="button" class="btn-map-ctrl" id="btn-map-zoom-out" title="Zoom Out" aria-label="Zoom Out">−</button>
+    <button type="button" class="btn-map-ctrl" id="btn-map-recenter" title="Re-center Location" aria-label="Re-center">🎯</button>
+  `;
+  container.appendChild(controls);
+
+  const initLat = lastFix ? lastFix.lat : 22.3072;
+  const initLon = lastFix ? lastFix.lon : 73.1812;
+  const initHeading = lastFix ? lastFix.heading : 0;
+
+  fullMapState = {
+    container,
+    canvas,
+    ctx: canvas.getContext('2d'),
+    lat: initLat,
+    lon: initLon,
+    zoom: 16,
+    heading: initHeading,
+    isDragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    centerOffsetX: 0,
+    centerOffsetY: 0,
+  };
+
+  function resizeCanvas() {
+    const rect = container.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(rect.width * dpr, 400);
+    canvas.height = Math.max(rect.height * dpr, 300);
+    renderFullCanvasMap();
   }
-  leafletMap.setView(pos, 17, { animate: true });
+
+  const ro = new ResizeObserver(() => resizeCanvas());
+  ro.observe(container);
+  resizeCanvas();
+
+  // Control button handlers
+  container.querySelector('#btn-map-zoom-in')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (fullMapState.zoom < 19) {
+      fullMapState.zoom += 1;
+      renderFullCanvasMap();
+    }
+  });
+
+  container.querySelector('#btn-map-zoom-out')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (fullMapState.zoom > 3) {
+      fullMapState.zoom -= 1;
+      renderFullCanvasMap();
+    }
+  });
+
+  container.querySelector('#btn-map-recenter')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fullMapState.centerOffsetX = 0;
+    fullMapState.centerOffsetY = 0;
+    if (lastFix) {
+      fullMapState.lat = lastFix.lat;
+      fullMapState.lon = lastFix.lon;
+    }
+    renderFullCanvasMap();
+  });
+
+  // Mouse & Touch Pan Handling
+  canvas.addEventListener('mousedown', (e) => {
+    fullMapState.isDragging = true;
+    fullMapState.dragStartX = e.clientX;
+    fullMapState.dragStartY = e.clientY;
+    canvas.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!fullMapState.isDragging) return;
+    const dx = e.clientX - fullMapState.dragStartX;
+    const dy = e.clientY - fullMapState.dragStartY;
+    fullMapState.dragStartX = e.clientX;
+    fullMapState.dragStartY = e.clientY;
+    fullMapState.centerOffsetX += dx * (window.devicePixelRatio || 1);
+    fullMapState.centerOffsetY += dy * (window.devicePixelRatio || 1);
+    renderFullCanvasMap();
+  });
+
+  window.addEventListener('mouseup', () => {
+    fullMapState.isDragging = false;
+    canvas.style.cursor = 'grab';
+  });
+
+  // Touch handlers
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      fullMapState.isDragging = true;
+      fullMapState.dragStartX = e.touches[0].clientX;
+      fullMapState.dragStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!fullMapState.isDragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - fullMapState.dragStartX;
+    const dy = e.touches[0].clientY - fullMapState.dragStartY;
+    fullMapState.dragStartX = e.touches[0].clientX;
+    fullMapState.dragStartY = e.touches[0].clientY;
+    fullMapState.centerOffsetX += dx * (window.devicePixelRatio || 1);
+    fullMapState.centerOffsetY += dy * (window.devicePixelRatio || 1);
+    renderFullCanvasMap();
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', () => {
+    fullMapState.isDragging = false;
+  });
+
+  renderFullCanvasMap();
+  return canvas;
+}
+
+export function updateFullCanvasMap(lat, lon, heading = 0) {
+  fullMapState.lat = lat;
+  fullMapState.lon = lon;
+  if (heading !== undefined) fullMapState.heading = heading;
+  renderFullCanvasMap();
+}
+
+function renderFullCanvasMap() {
+  const { canvas, ctx, lat, lon, zoom, heading, centerOffsetX, centerOffsetY } = fullMapState;
+  if (!canvas || !ctx) return;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const { x, y } = latLonToTileFraction(lat, lon, zoom);
+  
+  // 5x5 tile grid guarantees 100% edge-to-edge coverage on all screens
+  const minX = Math.floor(x) - 2;
+  const maxX = Math.floor(x) + 2;
+  const minY = Math.floor(y) - 2;
+  const maxY = Math.floor(y) + 2;
+
+  const tileSize = 256;
+  const centerX = w / 2 + centerOffsetX;
+  const centerY = h / 2 + centerOffsetY;
+
+  for (let tx = minX; tx <= maxX; tx++) {
+    for (let ty = minY; ty <= maxY; ty++) {
+      const tileUrl = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      const img = getTileImage(tileUrl, () => renderFullCanvasMap());
+
+      const px = Math.round((tx - x) * tileSize + centerX);
+      const py = Math.round((ty - y) * tileSize + centerY);
+
+      if (img) {
+        ctx.drawImage(img, px, py, tileSize, tileSize);
+      } else {
+        ctx.fillStyle = '#14151b';
+        ctx.fillRect(px, py, tileSize, tileSize);
+      }
+    }
+  }
+
+  // Draw User Location Beacon & Navigation Pointer
+  const rad = ((heading || 0) * Math.PI) / 180;
+
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate(rad);
+
+  // Vision / Heading Cone
+  const coneGrad = ctx.createRadialGradient(0, 0, 4, 0, -45, 55);
+  coneGrad.addColorStop(0, 'rgba(34, 197, 94, 0.7)');
+  coneGrad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, 52, -Math.PI / 2 - 0.48, -Math.PI / 2 + 0.48);
+  ctx.closePath();
+  ctx.fillStyle = coneGrad;
+  ctx.fill();
+
+  // Navigation Arrow
+  ctx.beginPath();
+  ctx.moveTo(0, -28);
+  ctx.lineTo(-10, -10);
+  ctx.lineTo(0, -14);
+  ctx.lineTo(10, -10);
+  ctx.closePath();
+  ctx.fillStyle = '#22c55e';
+  ctx.fill();
+
+  ctx.restore();
+
+  // Pulse ring
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 20, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+  ctx.fill();
+
+  // White border ring
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // Emerald center dot
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#22c55e';
+  ctx.fill();
 }
 
 export async function loadGoogleMaps(apiKey) {

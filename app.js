@@ -232,24 +232,34 @@ function initHudMiniMap() {
 
   startLocationWatch(
     async (fix) => {
-      updateMiniMapMarker(fix.lat, fix.lon);
+      updateMiniMapMarker(fix.lat, fix.lon, fix.heading || 0);
+      if (mapReady) {
+        updateLeafletMarker(fix.lat, fix.lon, fix.heading || 0);
+      }
       const accText = document.getElementById('hud-gps-text');
       if (accText) accText.textContent = `GPS ±${Math.round(fix.accuracy || 10)}m`;
 
       try {
         const addrObj = await reverseGeocode(fix.lat, fix.lon);
-        const name = addrObj.address?.road || addrObj.address?.suburb || addrObj.address?.city || addrObj.display_name?.split(',')[0] || 'Live Location';
+        const name = addrObj.address?.road || addrObj.address?.suburb || addrObj.address?.city || addrObj.display_name?.split(',')[0] || (fix.city ? `${fix.city}` : 'Live Location');
         const streetEl = document.getElementById('hud-street-name');
         if (streetEl) streetEl.textContent = name;
+        
+        // Also update Map tab card if open
+        const short = addrObj.display_name?.split(',').slice(0, 3).join(',') || name;
+        setMapCard('You are here', short, addrObj.display_name || `${fix.lat.toFixed(5)}, ${fix.lon.toFixed(5)}`);
       } catch {
         const streetEl = document.getElementById('hud-street-name');
-        if (streetEl) streetEl.textContent = `${fix.lat.toFixed(4)}°, ${fix.lon.toFixed(4)}°`;
+        if (streetEl) streetEl.textContent = fix.city || `${fix.lat.toFixed(4)}°, ${fix.lon.toFixed(4)}°`;
       }
     },
     (err) => {
       console.warn('GPS watch notice:', err);
-      const streetEl = document.getElementById('hud-street-name');
-      if (streetEl) streetEl.textContent = 'GPS offline / estimating';
+      const currentFix = getLastFix();
+      if (!currentFix) {
+        const streetEl = document.getElementById('hud-street-name');
+        if (streetEl) streetEl.textContent = 'GPS locating...';
+      }
     }
   );
 
@@ -574,6 +584,15 @@ function bind() {
   document.getElementById('btn-tour-prev')?.addEventListener('click', () => prevTourStep());
   document.getElementById('btn-tour-replay')?.addEventListener('click', () => replayTourStep());
   document.getElementById('btn-close-tour')?.addEventListener('click', () => exitTour());
+
+  // Landing Page Hero Action Listeners
+  document.getElementById('btn-landing-install')?.addEventListener('click', () => {
+    const installBtn = document.getElementById('btn-pwa-install');
+    if (installBtn) installBtn.click();
+    else speak('To install EchoLens, open the browser menu and select Add to Home Screen or Install App.');
+  });
+  document.getElementById('btn-landing-tour')?.addEventListener('click', () => startTour());
+  document.getElementById('btn-landing-voice')?.addEventListener('click', () => toggleVoice());
 
   volumeControl?.addEventListener('input', (e) => {
     volumeSetting = Number(e.target.value);
@@ -1808,24 +1827,33 @@ function setMapCard(kicker, title, sub) {
 }
 
 function openMapTab() {
-  startLocationWatch(onGpsFix, (err) => {
-    setMapCard('GPS', 'Location blocked', err.message || 'Allow location in the browser to show your map.');
-    speak('Location permission is required for the live map.');
-  });
   const host = document.getElementById('live-map');
+  const fix = getLastFix();
+  if (fix) {
+    setMapCard('Location', `${fix.city || 'Live Map'}`, fix.accuracy > 500 ? 'Estimated location · Enable GPS for precision' : `${fix.lat.toFixed(5)}, ${fix.lon.toFixed(5)}`);
+  }
+
+  startLocationWatch(onGpsFix, (err) => {
+    const currentFix = getLastFix();
+    if (currentFix) {
+      setMapCard('Location (Estimated)', `${currentFix.city || 'Network Location'}`, 'GPS permission blocked · Displaying city map');
+    } else {
+      setMapCard('GPS', 'Location blocked', err.message || 'Allow location in the browser to show your map.');
+    }
+  });
+
   const key = getSavedGoogleKey();
   if (key) {
     loadGoogleMaps(key).then((ok) => {
       useGoogleMaps = ok;
-      const fix = getLastFix();
-      if (ok && fix) initGoogleMap(host, fix.lat, fix.lon);
+      const currentFix = getLastFix();
+      if (ok && currentFix) initGoogleMap(host, currentFix.lat, currentFix.lon);
       else initLeafletMap(host);
       mapReady = true;
     }).catch(() => {
       useGoogleMaps = false;
       initLeafletMap(host);
       mapReady = true;
-      speak('Google Maps did not load. Using OpenStreetMap.');
     });
   } else {
     initLeafletMap(host);
@@ -1837,7 +1865,7 @@ async function onGpsFix(fix) {
   const acc = Math.round(fix.accuracy || 0);
   setMapCard('GPS', `${fix.lat.toFixed(5)}, ${fix.lon.toFixed(5)}`, acc ? `Accuracy about ${acc} meters` : 'Live GPS');
   if (useGoogleMaps) updateGoogleMarker(fix.lat, fix.lon);
-  else updateLeafletMarker(fix.lat, fix.lon);
+  else updateLeafletMarker(fix.lat, fix.lon, fix.heading || 0);
 
   /* Update AR overlay */
   if (isARMode) {

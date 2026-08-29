@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#08090b">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="EchoLens">
+  <meta name="description" content="Spatial audio orientation and assistive vision.">
+  <title>EchoLens — Assistive Vision & Spatial Audio</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ1fENt33l9KcH2Z0c7n1Hua4Eo4TzE=" crossorigin="">
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body class="app-body-mode">
+  <a class="skip-link" href="#btn-start-listening">Skip to main content</a>
+  <div id="live-region" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+  <div class="app-container">
+
+    <!-- ── Top Header Bar ── -->
+    <header class="app-header">
+      <div class="header-brand">
+        <a href="/" class="header-back-home" title="Back to Overview">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+        <span class="brand-glyph">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="4" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand-text">EchoLens</span>
+      </div>
+
+      <!-- Live Status Pill -->
+      <div class="header-status" id="status-chip">
+        <span class="status-indicator" id="status-dot"></span>
+        <span class="status-label" id="status-text">Loading model</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="header-controls">
+        <button type="button" class="header-btn" id="btn-mute" aria-label="Mute audio" aria-pressed="false">
+          <svg class="icon-on" viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <path d="M11 5 6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M19 5a9 9 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <svg class="icon-off" viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <path d="M11 5 6 9H2v6h4l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M23 9l-6 6M17 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <button type="button" class="header-btn" id="btn-voice-assistant" aria-label="Voice control">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <button type="button" class="header-btn" id="btn-info" aria-label="System limits and safety">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="7.5" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Main Viewport ── -->
+    <main class="app-main">
+
+      <!-- ════════ VIEW 1: LISTEN (Assistive Vision Cockpit) ════════ -->
+      <section class="view active" id="view-listen" aria-label="Listen">
+        <div class="view-content">
+
+          <!-- Top Location & Quick Action Bar -->
+          <div class="cockpit-top-bar">
+            <button type="button" class="location-hud-pill" id="btn-hud-speak-loc" title="Tap to announce current location">
+              <span class="location-pulse-dot"></span>
+              <span class="location-hud-text" id="hud-street-name">Acquiring GPS location...</span>
+              <svg class="location-hud-ico" viewBox="0 0 24 24" width="13" height="13" fill="none">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+
+            <button type="button" class="cockpit-icon-btn" id="btn-quick-flip-cam" title="Flip Camera" aria-label="Flip Camera">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M20 10c0-4.42-3.58-8-8-8-3.08 0-5.75 1.74-7.07 4.29M4 14c0 4.42 3.58 8 8 8 3.08 0 5.75-1.74 7.07-4.29" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="1 7 5 7 5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="23 17 19 17 19 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Main Spatial Vision Viewport -->
+          <div class="bionic-viewport" id="home-radar-stage">
+            <video id="webcam" autoplay playsinline muted aria-hidden="true"></video>
+            <canvas id="canvas" aria-hidden="true"></canvas>
+
+            <!-- AR Reticle Target Brackets -->
+            <div class="reticle-bracket bracket-tl"></div>
+            <div class="reticle-bracket bracket-tr"></div>
+            <div class="reticle-bracket bracket-bl"></div>
+            <div class="reticle-bracket bracket-br"></div>
+
+            <!-- Spatial Depth Arc Rings -->
+            <div class="depth-arc arc-near"><span class="arc-label">1m</span></div>
+            <div class="depth-arc arc-mid"><span class="arc-label">2m</span></div>
+            <div class="depth-arc arc-far"><span class="arc-label">3m</span></div>
+
+            <!-- Center Target Crosshair -->
+            <div class="bionic-center-crosshair" aria-hidden="true">
+              <div class="crosshair-dot"></div>
+              <span class="crosshair-label">AHEAD</span>
+            </div>
+
+            <!-- Floating Detected Object Badges -->
+            <div class="radar-pills" id="radar-pills"></div>
+
+            <!-- 📍 Picture-in-Picture Floating GPS Mini-Map -->
+            <div class="pip-map-card" id="hud-corner-map-wrap" aria-label="Real-time GPS Mini-Map">
+              <div id="hud-mini-map" class="pip-map-canvas"></div>
+              <div class="pip-map-overlay">
+                <span class="pip-live-badge">
+                  <span class="pip-live-pulse"></span>
+                  <span id="hud-gps-text">LIVE GPS</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Standby Overlay (Fades out when listening) -->
+            <div class="viewport-standby-cover" id="viewport-standby">
+              <div class="standby-icon-ring">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <span class="standby-hint">Camera Standby · Tap Start Below</span>
+            </div>
+          </div>
+
+          <!-- Dynamic Proximity & Detection Card -->
+          <article class="bionic-detection-card" id="primary-card" aria-live="polite">
+            <div class="card-top-row">
+              <span class="bionic-tag" id="primary-kicker">Standby</span>
+              <span class="bionic-direction-badge" id="primary-direction">Ready</span>
+            </div>
+
+            <h2 class="bionic-card-title" id="primary-title">No obstacle detected</h2>
+            <p class="bionic-card-sub" id="primary-sub">Start spatial vision to perceive obstacles in stereo 3D audio.</p>
+
+            <!-- Proximity Visual Progress Bar -->
+            <div class="proximity-meter-container" id="proximity-container">
+              <div class="proximity-track">
+                <div class="proximity-fill" id="proximity-fill" style="width: 0%;"></div>
+              </div>
+              <div class="proximity-labels">
+                <span>0.5m (Near)</span>
+                <span>2.0m</span>
+                <span>5.0m (Far)</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Primary Control Stack -->
+          <div class="cockpit-controls">
+            <button type="button" class="btn-hero-listen" id="btn-start-listening" aria-label="Start Listening">
+              <span class="hero-btn-glow"></span>
+              <span class="hero-btn-content">
+                <span class="hero-btn-icon">
+                  <svg class="icon-play" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                    <polygon points="6 4 20 12 6 20"/>
+                  </svg>
+                </span>
+                <span class="hero-btn-text">
+                  <strong class="btn-primary-label">Start Spatial Vision</strong>
+                  <small class="btn-primary-sub">Real-time camera & stereo audio</small>
+                </span>
+              </span>
+            </button>
+
+            <div class="cockpit-sub-row">
+              <button type="button" class="btn-cockpit-secondary" id="btn-demo">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+                  <polygon points="10 8 16 12 10 16" fill="currentColor"/>
+                </svg>
+                <span id="btn-demo-label">Play Demo</span>
+              </button>
+
+              <button type="button" class="btn-cockpit-secondary" id="btn-mute" aria-pressed="false" aria-label="Mute Audio">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path class="wave wave-1" d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path class="wave wave-2" d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Audio On</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ════════ VIEW 2: READ ════════ -->
+      <section class="view" id="view-read" aria-label="Read">
+        <div class="view-content">
+          <header class="section-header">
+            <h1 class="section-title">Read</h1>
+            <p class="section-subtitle">On-device optical text, barcodes, and color identification.</p>
+          </header>
+
+          <div class="tools-grid">
+            <button type="button" class="tool-card" id="btn-read-text">
+              <div class="tool-icon tool-blue">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                  <path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="tool-info">
+                <strong>Read Text</strong>
+                <span>Signs, documents, and labels</span>
+              </div>
+              <svg class="tool-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+
+            <button type="button" class="tool-card" id="btn-read-barcode">
+              <div class="tool-icon tool-purple">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                  <path d="M4 4v16M8 6v12M11 6v12M14 6v12M20 4v16M17 6v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="tool-info">
+                <strong>Scan Barcode / QR</strong>
+                <span>Instant product and QR code recognition</span>
+              </div>
+              <svg class="tool-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+
+            <button type="button" class="tool-card" id="btn-read-color">
+              <div class="tool-icon tool-amber">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="tool-info">
+                <strong>Identify Color</strong>
+                <span>Detects color in center of camera</span>
+              </div>
+              <svg class="tool-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <article class="status-card" id="read-card" aria-live="polite">
+            <div class="card-badge" id="read-kicker">Ready</div>
+            <h2 class="card-title" id="read-title">Hold print or code in view</h2>
+            <p class="card-description" id="read-sub">Runs locally in your browser. Nothing is uploaded to the cloud.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ════════ VIEW 3: FIND ════════ -->
+      <section class="view" id="view-find" aria-label="Find">
+        <div class="view-content">
+          <header class="section-header">
+            <h1 class="section-title">Find Object</h1>
+            <p class="section-subtitle">Audio homing tone speeds up as the target centers in view.</p>
+          </header>
+
+          <!-- Search Input Row -->
+          <div class="search-container">
+            <input id="find-input" class="search-input" type="text" autocomplete="off"
+              placeholder="Search object (chair, bottle, person…)" enterkeyhint="search">
+            <button type="button" class="btn-search-go" id="btn-find-go">Track</button>
+          </div>
+
+          <!-- Common Target Chips -->
+          <div class="chips-container" id="find-chips" role="group" aria-label="Quick target selection"></div>
+
+          <!-- Target Card -->
+          <article class="status-card" id="homing-card" aria-live="polite">
+            <div class="card-badge" id="homing-kicker">No Target</div>
+            <h2 class="card-title" id="homing-title">Choose an object to track</h2>
+            <p class="card-description" id="homing-sub">Detection will start automatically if the camera is off.</p>
+          </article>
+
+          <button type="button" class="btn-secondary full-w" id="btn-clear-find">Clear Target</button>
+        </div>
+      </section>
+
+      <!-- ════════ VIEW 4: MAP & AR ════════ -->
+      <section class="view" id="view-map" aria-label="Map">
+        <div class="view-content">
+          <header class="section-header map-header">
+            <div>
+              <h1 class="section-title">Map & Location</h1>
+              <p class="section-subtitle">Live GPS orientation. Not a walking guide.</p>
+            </div>
+            <button type="button" class="btn-ar-toggle" id="btn-ar-toggle" aria-label="Switch to AR Camera">
+              <svg class="ar-icon-cam" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2"/>
+                <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <svg class="ar-icon-map" viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <polygon points="3 6 3 21 9 18 15 21 21 18 21 3 15 6 9 3 3 6" stroke="currentColor" stroke-width="2"/>
+                <path d="M9 3v15M15 6v15" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span id="ar-toggle-label">AR View</span>
+            </button>
+          </header>
+
+          <!-- Flat Map -->
+          <div class="map-classic" id="map-classic">
+            <div id="live-map" class="map-view-box" role="img" aria-label="Map of current location"></div>
+
+            <article class="status-card" aria-live="polite">
+              <div class="card-badge" id="map-kicker">GPS Location</div>
+              <h2 class="card-title" id="map-title">Waiting for GPS</h2>
+              <p class="card-description" id="map-sub">Enable location permissions to position on OpenStreetMap.</p>
+            </article>
+
+            <div class="btn-row">
+              <button type="button" class="btn-secondary" id="btn-speak-location">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none">
+                  <path d="M12 22s8-4.5 8-11a8 8 0 0 0-16 0c0 6.5 8 11 8 11z" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="12" cy="11" r="3" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <span>Speak Address</span>
+              </button>
+              <button type="button" class="btn-secondary" id="btn-nearby">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none">
+                  <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+                  <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Nearby Places</span>
+              </button>
+            </div>
+
+            <ul class="place-list" id="place-list"></ul>
+          </div>
+
+          <!-- AR Camera Overlay -->
+          <div class="ar-container hidden" id="ar-camera-view">
+            <video id="ar-webcam" autoplay playsinline muted aria-hidden="true"></video>
+
+            <div class="ar-header-bar" id="ar-overlay-bar">
+              <div class="ar-address-text" id="ar-address">Waiting for GPS</div>
+              <div class="ar-coords-text" id="ar-coords"></div>
+            </div>
+
+            <div class="ar-compass-badge" id="ar-compass" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <polygon points="12 2 15 10 12 8 9 10" fill="#ef4444"/>
+                <polygon points="12 22 9 14 12 16 15 14" fill="#ffffff"/>
+              </svg>
+              <span id="ar-heading-text">0°</span>
+            </div>
+
+            <div class="ar-places-layer" id="ar-places-layer"></div>
+
+            <div class="ar-mini-map-box" id="ar-mini-map-wrap">
+              <div id="ar-mini-map" class="ar-mini-map"></div>
+            </div>
+
+            <div class="ar-actions-bar">
+              <button type="button" class="btn-secondary dark" id="btn-ar-speak-location">Speak Location</button>
+              <button type="button" class="btn-secondary dark" id="btn-ar-nearby">Nearby</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════ VIEW 5: SETTINGS ════════ -->
+      <section class="view" id="view-settings" aria-label="Settings">
+        <div class="view-content">
+          <header class="section-header">
+            <h1 class="section-title">Settings</h1>
+            <p class="section-subtitle">Customize voice, language, and audio feedback.</p>
+          </header>
+
+          <!-- Card 1: Voice & Language -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-icon voice-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" stroke-width="2"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h2 class="card-header-title">Voice & Language</h2>
+            </div>
+
+            <!-- Custom Language Dropdown -->
+            <div class="settings-row-item">
+              <span class="row-label">Language</span>
+              <div class="custom-select-wrap" id="lang-custom-wrap">
+                <button type="button" class="custom-select-trigger" id="lang-trigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="trigger-text" id="lang-trigger-text">🇺🇸 English</span>
+                  <svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none">
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="custom-select-popover" id="lang-popover" role="listbox" aria-label="Select Language">
+                  <button type="button" class="popover-item selected" data-value="en"><span>🇺🇸 English</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="es"><span>🇪🇸 Español</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="fr"><span>🇫🇷 Français</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="de"><span>🇩🇪 Deutsch</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="hi"><span>🇮🇳 हिन्दी (Hindi)</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="ja"><span>🇯🇵 日本語</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="zh"><span>🇨🇳 中文 (Mandarin)</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="pt"><span>🇧🇷 Português</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="it"><span>🇮🇹 Italiano</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="ar"><span>🇸🇦 العربية</span><span class="popover-check">✓</span></button>
+                </div>
+                <select id="language-select" class="hidden-select" tabindex="-1">
+                  <option value="en" selected>English</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="hi">हिन्दी</option>
+                  <option value="ja">日本語</option>
+                  <option value="zh">中文</option>
+                  <option value="pt">Português</option>
+                  <option value="it">Italiano</option>
+                  <option value="ar">العربية</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Custom Voice Tone Dropdown -->
+            <div class="settings-row-item">
+              <span class="row-label">Voice Tone</span>
+              <div class="custom-select-wrap" id="tone-custom-wrap">
+                <button type="button" class="custom-select-trigger" id="tone-trigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="trigger-text" id="tone-trigger-text">✨ Simple & Bright</span>
+                  <svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none">
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="custom-select-popover" id="tone-popover" role="listbox" aria-label="Select Voice Tone">
+                  <button type="button" class="popover-item selected" data-value="crisp"><span>✨ Simple & Bright</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="natural"><span>🎙️ Natural & Balanced</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="gentle"><span>🕊️ Gentle & Smooth</span><span class="popover-check">✓</span></button>
+                </div>
+                <select id="voice-tone-select" class="hidden-select" tabindex="-1">
+                  <option value="crisp" selected>Simple & Bright</option>
+                  <option value="natural">Natural & Balanced</option>
+                  <option value="gentle">Gentle & Smooth</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Custom Speaker Voice Dropdown -->
+            <div class="settings-row-item">
+              <span class="row-label">Speaker Voice</span>
+              <div class="custom-select-wrap" id="voice-custom-wrap">
+                <button type="button" class="custom-select-trigger" id="voice-trigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="trigger-text" id="voice-trigger-text">Auto Natural Voice</span>
+                  <svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none">
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+                <div class="custom-select-popover" id="voice-popover" role="listbox" aria-label="Select Speaker Voice"></div>
+                <select id="voice-select" class="hidden-select" tabindex="-1"></select>
+              </div>
+            </div>
+
+            <div class="settings-action-item">
+              <button type="button" class="btn-sample-voice" id="btn-test-voice">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Test Voice Sample</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Card 2: Audio & Perception -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-icon audio-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h2 class="card-header-title">Audio & Detection</h2>
+            </div>
+
+            <div class="settings-slider-item">
+              <div class="slider-header">
+                <span class="row-label">Volume</span>
+                <span class="slider-badge" id="volume-val">60%</span>
+              </div>
+              <input type="range" id="volume-control" class="clean-slider" min="0" max="100" value="60">
+            </div>
+
+            <!-- Custom Announce Filter Dropdown -->
+            <div class="settings-row-item">
+              <span class="row-label">Announce Filter</span>
+              <div class="custom-select-wrap" id="profile-custom-wrap">
+                <button type="button" class="custom-select-trigger" id="profile-trigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="trigger-text" id="profile-trigger-text">People & Furniture</span>
+                  <svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none">
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+                <div class="custom-select-popover" id="profile-popover" role="listbox" aria-label="Select Filter">
+                  <button type="button" class="popover-item" data-value="minimal"><span>👤 People only</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item selected" data-value="standard"><span>🛋️ People & Furniture</span><span class="popover-check">✓</span></button>
+                  <button type="button" class="popover-item" data-value="detailed"><span>📦 All Supported Objects</span><span class="popover-check">✓</span></button>
+                </div>
+                <select id="audio-profile-select" class="hidden-select" tabindex="-1">
+                  <option value="minimal">People only</option>
+                  <option value="standard" selected>People & Furniture</option>
+                  <option value="detailed">All Objects</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="settings-toggle-item" for="btn-haptic">
+              <span class="row-label">Haptic Vibration</span>
+              <span class="clean-toggle">
+                <input type="checkbox" id="btn-haptic" checked>
+                <span class="toggle-track"></span>
+              </span>
+            </label>
+
+            <label class="settings-toggle-item" for="btn-camera-preview">
+              <span class="row-label">Camera Overlay</span>
+              <span class="clean-toggle">
+                <input type="checkbox" id="btn-camera-preview" checked>
+                <span class="toggle-track"></span>
+              </span>
+            </label>
+          </div>
+
+          <!-- Voice Walkthrough Card -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div class="card-header-icon tour-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <h3>Voice Walkthrough Tour</h3>
+                <p>Guided audio walkthrough explaining every feature aloud</p>
+              </div>
+            </div>
+            <button type="button" class="btn-primary" id="btn-start-walkthrough">
+              <span class="btn-text-block">
+                <strong>Start Voice Walkthrough Tour</strong>
+                <small>Listen to a spoken tour of all features</small>
+              </span>
+            </button>
+          </div>
+
+          <!-- Privacy & Status Footnote -->
+          <div class="settings-privacy-pill">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#22c55e" stroke-width="2"/>
+            </svg>
+            <span>100% On-Device Private. Camera & audio never leave your device.</span>
+          </div>
+
+          <!-- Hidden telemetry bindings for compatibility -->
+          <div class="hidden" aria-hidden="true">
+            <span id="tts-announcer"></span>
+            <input id="gmaps-key" type="password">
+            <button id="btn-save-gmaps"></button>
+            <button id="btn-switch-camera"></button>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ── Bottom Navigation Dock ── -->
+    <nav class="app-tab-bar" aria-label="Primary Navigation">
+      <button type="button" class="tab-button active" data-target="view-listen" aria-current="page">
+        <span class="tab-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
+            <path d="M3.5 12a8.5 8.5 0 0 1 17 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M7 12a5 5 0 0 1 10 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="tab-label">Listen</span>
+      </button>
+
+      <button type="button" class="tab-button" data-target="view-read">
+        <span class="tab-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="tab-label">Read</span>
+      </button>
+
+      <button type="button" class="tab-button" data-target="view-find">
+        <span class="tab-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+            <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="tab-label">Find</span>
+      </button>
+
+      <button type="button" class="tab-button" data-target="view-map">
+        <span class="tab-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="9" r="2.5" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </span>
+        <span class="tab-label">Map</span>
+      </button>
+
+      <button type="button" class="tab-button" data-target="view-settings">
+        <span class="tab-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </span>
+        <span class="tab-label">Settings</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Voice Assistant Sheet -->
+  <div class="voice-sheet hidden" id="voice-hud" role="dialog" aria-label="Voice control">
+    <div class="voice-sheet-header">
+      <span class="voice-pulse-dot"></span>
+      <strong id="voice-hud-status">Listening for command</strong>
+      <button type="button" class="header-btn" id="btn-voice-close" aria-label="Close voice assistant">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+          <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <p class="voice-transcript" id="voice-hud-transcript">Try saying: "Start listening", "Find chair", "Read text", or "Stop"</p>
+  </div>
+
+  <!-- Camera Permission Modal -->
+  <div class="modal-backdrop hidden" id="cam-permission-modal" role="dialog" aria-labelledby="cam-modal-title">
+    <div class="modal-card">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2"/>
+          <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      </div>
+      <h2 id="cam-modal-title" class="modal-title">Enable Camera</h2>
+      <p id="cam-modal-desc" class="modal-body">EchoLens uses your camera locally for on-device object detection. Video is never recorded or uploaded.</p>
+      <button type="button" class="btn-primary" id="btn-grant-cam">
+        <span class="btn-text-block">
+          <strong>Allow Camera</strong>
+          <small>Runs on this device</small>
+        </span>
+      </button>
+      <button type="button" class="btn-secondary full-w" id="btn-modal-demo">Play Demo Instead</button>
+      <button type="button" class="btn-ghost full-w" id="btn-close-cam-modal">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- 📲 Floating PWA Install Banner Popup -->
+  <aside class="pwa-install-banner hidden" id="pwa-install-banner" role="dialog" aria-label="Install EchoLens App">
+    <div class="pwa-banner-left">
+      <div class="pwa-app-icon">
+        <svg viewBox="0 0 512 512" width="22" height="22" fill="none">
+          <circle cx="256" cy="256" r="240" fill="#ffffff"/>
+          <path d="M100 256 C180 176, 332 176, 412 256 C332 336, 180 336, 100 256Z" fill="none" stroke="#08090b" stroke-width="28"/>
+          <circle cx="256" cy="256" r="48" fill="#08090b"/>
+          <circle cx="242" cy="242" r="14" fill="#ffffff"/>
+        </svg>
+      </div>
+      <div class="pwa-banner-text">
+        <strong>Install EchoLens</strong>
+        <small>Fast, offline spatial vision</small>
+      </div>
+    </div>
+    <div class="pwa-banner-actions">
+      <button type="button" class="btn-pwa-install" id="btn-pwa-install">Install</button>
+      <button type="button" class="btn-pwa-dismiss" id="btn-pwa-dismiss" aria-label="Dismiss installation">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+          <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- 🧭 Interactive Voice-Guided Walkthrough Tour Modal -->
+  <div class="modal-backdrop hidden" id="walkthrough-modal" role="dialog" aria-labelledby="tour-modal-title">
+    <div class="modal-card tour-card">
+      <div class="tour-header-bar">
+        <span class="tour-step-badge" id="tour-step-badge">Step 1 of 6</span>
+        <button type="button" class="tour-close-btn" id="btn-close-tour" aria-label="Exit Walkthrough Tour">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="tour-icon-box" id="tour-icon-box">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none">
+          <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="2"/>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <h2 id="tour-modal-title" class="tour-title">100% Voice Controllable</h2>
+      <p id="tour-modal-desc" class="tour-body">You never need to touch the screen. You can simply talk to EchoLens to change any setting, adjust volume, switch languages, find objects, or navigate anywhere.</p>
+
+      <div class="tour-speech-indicator">
+        <span class="tour-voice-dot"></span>
+        <span id="tour-speech-text">Speaking explanation aloud...</span>
+        <button type="button" class="tour-replay-btn" id="btn-tour-replay" title="Replay voice explanation">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="tour-actions-row">
+        <button type="button" class="btn-secondary" id="btn-tour-prev">Previous</button>
+        <button type="button" class="btn-primary" id="btn-tour-next">Next Step →</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
