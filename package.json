@@ -1,0 +1,21 @@
+{
+  "name": "echolens",
+  "version": "1.0.0",
+  "description": "Hackathon prototype: on-device detections mapped to spatial audio for blind and low-vision users",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:build": "vite build && npx cap copy",
+    "cap:android": "vite build && npx cap open android",
+    "cap:ios": "vite build && npx cap open ios"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "@zxing/browser": "^0.2.1",
+    "tesseract.js": "^7.0.0"
+  }
+}

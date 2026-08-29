@@ -1,0 +1,12 @@
+{
+  "name": "EchoLens",
+  "short_name": "EchoLens",
+  "description": "Hear the chair on your left. On-device stereo object cues. Not a cane.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f3ee",
+  "theme_color": "#6d54e8",
+  "categories": ["accessibility", "utilities"]
+}

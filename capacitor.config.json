@@ -1,0 +1,19 @@
+{
+  "appId": "com.echolens.app",
+  "appName": "EchoLens",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0a0c14",
+      "showSpinner": false
+    },
+    "Haptics": {
+      "enabled": true
+    }
+  }
+}
