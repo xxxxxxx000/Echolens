@@ -568,6 +568,13 @@ function bind() {
   document.getElementById('btn-read-barcode')?.addEventListener('click', () => runReadTool('barcode'));
   document.getElementById('btn-read-color')?.addEventListener('click', () => runReadTool('color'));
 
+  // Walkthrough Tour Listeners
+  document.getElementById('btn-start-walkthrough')?.addEventListener('click', () => startTour());
+  document.getElementById('btn-tour-next')?.addEventListener('click', () => nextTourStep());
+  document.getElementById('btn-tour-prev')?.addEventListener('click', () => prevTourStep());
+  document.getElementById('btn-tour-replay')?.addEventListener('click', () => replayTourStep());
+  document.getElementById('btn-close-tour')?.addEventListener('click', () => exitTour());
+
   volumeControl?.addEventListener('input', (e) => {
     volumeSetting = Number(e.target.value);
     if (volumeVal) volumeVal.textContent = `${volumeSetting}%`;
@@ -1301,6 +1308,28 @@ function handleVoice(rawText) {
   const text = rawText.toLowerCase().trim();
   console.log('Voice Command received:', text);
 
+  // 0. Walkthrough Tour Controls
+  if (text.includes('start tour') || text.includes('walkthrough') || text.includes('help tour') || text.includes('audio tour')) {
+    startTour();
+    return;
+  }
+  if (text.includes('next step') || text.includes('next tour') || text === 'next') {
+    nextTourStep();
+    return;
+  }
+  if (text.includes('previous step') || text.includes('previous tour') || text === 'previous' || text === 'back') {
+    prevTourStep();
+    return;
+  }
+  if (text.includes('exit tour') || text.includes('close tour') || text.includes('stop tour')) {
+    exitTour();
+    return;
+  }
+  if (text.includes('repeat step') || text.includes('replay step') || text.includes('repeat tour') || text.includes('say again')) {
+    replayTourStep();
+    return;
+  }
+
   // 1. Language Controls
   if (text.includes('spanish') || text.includes('español')) {
     setLanguage('es');
@@ -1646,6 +1675,127 @@ function syncProfileUI(prof) {
     const pt = document.getElementById('profile-trigger-text');
     if (pt) pt.textContent = (profItem.querySelector('span')?.textContent || profItem.textContent).replace('✓', '').trim();
   }
+}
+
+/* ── 🧭 Audio-Guided Walkthrough Tour Engine ── */
+let currentTourIndex = 0;
+const tourSteps = [
+  {
+    step: 1,
+    title: '100% Voice Controllable',
+    badge: 'Step 1 of 6 · Voice Control',
+    tab: 'view-listen',
+    icon: '<rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="2"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    speech: 'Welcome to EchoLens! You never need to touch the screen. You can control the entire app simply by speaking. Say start listening, change language to Spanish, set volume to 80, or where am I at any time.',
+    desc: 'You never need to touch the screen. Simply talk to EchoLens to change settings, adjust volume, switch languages, find objects, or navigate anywhere.'
+  },
+  {
+    step: 2,
+    title: 'Spatial Vision & GPS HUD',
+    badge: 'Step 2 of 6 · Listen View',
+    tab: 'view-listen',
+    icon: '<circle cx="12" cy="12" r="3.5" fill="currentColor"/><path d="M3.5 12a8.5 8.5 0 0 1 17 0M7 12a5 5 0 0 1 10 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    speech: 'In the Listen tab, point your camera forward. Obstacles appear in the centre with real-time 3D stereo audio, while your live street and rotating GPS compass are displayed in the top-right corner.',
+    desc: 'Centre camera feed with AI bounding boxes, distance estimates, and a Picture-in-Picture GPS mini-map in the top-right.'
+  },
+  {
+    step: 3,
+    title: 'Audio Object Hunting',
+    badge: 'Step 3 of 6 · Find View',
+    tab: 'view-find',
+    icon: '<circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    speech: 'In the Find tab, you can ask EchoLens to hunt for specific objects like chairs, bottles, laptops, or people. The audio beeps faster and higher in pitch as you get closer.',
+    desc: 'Say "Find chair" or "Look for person" to lock onto objects with directional sound.'
+  },
+  {
+    step: 4,
+    title: 'Document & Scene Reader',
+    badge: 'Step 4 of 6 · Read View',
+    tab: 'view-read',
+    icon: '<path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    speech: 'In the Read tab, point your camera at text, signs, products, or barcodes. EchoLens will read documents aloud or describe the entire scene.',
+    desc: 'Say "Read text", "Scan barcode", or "Describe scene" for instant spoken descriptions.'
+  },
+  {
+    step: 5,
+    title: 'Real-Time Street Navigation',
+    badge: 'Step 5 of 6 · Map View',
+    tab: 'view-map',
+    icon: '<polygon points="3 11 22 2 13 21 11 13 3 11" fill="currentColor"/>',
+    speech: 'In the Map tab, track your real-world coordinates and street address. Say "Where am I" or "What is nearby" for spoken geographic awareness.',
+    desc: 'Continuous GPS tracking, rotating compass heading cone, and nearby place discovery.'
+  },
+  {
+    step: 6,
+    title: 'Voice & Multi-Language Settings',
+    badge: 'Step 6 of 6 · Settings',
+    tab: 'view-settings',
+    icon: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="2"/>',
+    speech: 'In Settings, you can switch between 10 languages, adjust bright voice tones, and change volume. Simply say "Change language to Spanish" or "Set volume to 80". You are all set to use EchoLens!',
+    desc: '10 international languages, bright voice tones, volume slider, and tactile feedback.'
+  }
+];
+
+function startTour(stepIndex = 0) {
+  currentTourIndex = Math.max(0, Math.min(tourSteps.length - 1, stepIndex));
+  document.getElementById('walkthrough-modal')?.classList.remove('hidden');
+  renderTourStep(currentTourIndex);
+}
+
+function renderTourStep(index) {
+  const item = tourSteps[index];
+  if (!item) return;
+
+  if (item.tab) {
+    const tabBtn = document.querySelector(`.tab-button[data-target="${item.tab}"]`);
+    switchTab(item.tab, tabBtn);
+    if (item.tab === 'view-map') openMapTab();
+  }
+
+  const badgeEl = document.getElementById('tour-step-badge');
+  const titleEl = document.getElementById('tour-modal-title');
+  const descEl = document.getElementById('tour-modal-desc');
+  const iconEl = document.getElementById('tour-icon-box');
+  const nextBtn = document.getElementById('btn-tour-next');
+  const prevBtn = document.getElementById('btn-tour-prev');
+  const speechText = document.getElementById('tour-speech-text');
+
+  if (badgeEl) badgeEl.textContent = item.badge;
+  if (titleEl) titleEl.textContent = item.title;
+  if (descEl) descEl.textContent = item.desc;
+  if (iconEl && item.icon) iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="28" height="28" fill="none">${item.icon}</svg>`;
+  if (speechText) speechText.textContent = item.title;
+
+  if (prevBtn) prevBtn.style.visibility = index === 0 ? 'hidden' : 'visible';
+  if (nextBtn) nextBtn.textContent = index === tourSteps.length - 1 ? 'Finish Tour ✓' : 'Next Step →';
+
+  speak(item.speech);
+}
+
+function nextTourStep() {
+  if (currentTourIndex < tourSteps.length - 1) {
+    currentTourIndex++;
+    renderTourStep(currentTourIndex);
+  } else {
+    exitTour();
+    speak('Tour complete. You can speak commands anytime. Say start listening to begin.');
+  }
+}
+
+function prevTourStep() {
+  if (currentTourIndex > 0) {
+    currentTourIndex--;
+    renderTourStep(currentTourIndex);
+  }
+}
+
+function replayTourStep() {
+  const item = tourSteps[currentTourIndex];
+  if (item) speak(item.speech);
+}
+
+function exitTour() {
+  document.getElementById('walkthrough-modal')?.classList.add('hidden');
 }
 
 function setMapCard(kicker, title, sub) {
