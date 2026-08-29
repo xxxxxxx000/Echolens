@@ -1249,16 +1249,24 @@ function startVoice() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const hud = document.getElementById('voice-hud');
   if (!SpeechRecognition) {
-    speak('Voice commands are not available in this browser. Use the buttons, or type a find target.');
+    speak('Voice commands are not supported in this browser. Please use Chrome or Edge.');
     return;
   }
   isVoiceEnabled = true;
   hud?.classList.remove('hidden');
   document.getElementById('btn-voice-assistant')?.classList.add('listening');
+  
+  try { recognition?.stop(); } catch {}
   recognition = new SpeechRecognition();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = 'en-US';
+  
+  const langCode = {
+    en: 'en-US', es: 'es-ES', fr: 'fr-FR', de: 'de-DE', hi: 'hi-IN',
+    ja: 'ja-JP', zh: 'zh-CN', pt: 'pt-BR', it: 'it-IT', ar: 'ar-SA'
+  }[getLanguage()] || 'en-US';
+  recognition.lang = langCode;
+
   recognition.onresult = (event) => {
     let finalText = '';
     let interim = '';
@@ -1268,16 +1276,18 @@ function startVoice() {
       else interim += t;
     }
     const el = document.getElementById('voice-hud-transcript');
-    if (el) el.textContent = finalText || interim;
+    if (el) el.textContent = finalText || interim || 'Listening for command...';
     if (finalText) handleVoice(finalText.toLowerCase().trim());
   };
+
   recognition.onend = () => {
     if (isVoiceEnabled) {
       try { recognition.start(); } catch {}
     }
   };
+
   try { recognition.start(); } catch {}
-  speak('Voice control on. Say start listening, find chair, or stop.');
+  speak('Voice control active. You can talk to control the app.');
 }
 
 function stopVoice() {
@@ -1287,35 +1297,355 @@ function stopVoice() {
   document.getElementById('btn-voice-assistant')?.classList.remove('listening');
 }
 
-function handleVoice(text) {
-  if (text.includes('start listen') || text.includes('start nav') || text.includes('start camera')) {
-    if (!isListening) startListening();
-  } else if (text.includes('stop listen') || text.includes('stop camera') || text === 'stop') {
-    if (isListening) stopListening();
-  } else if (text.includes('start demo') || text.includes('play demo')) {
-    if (!isDemoMode) startDemo();
-  } else if (text.includes('stop demo')) {
-    if (isDemoMode) stopDemo();
-  } else if (text.startsWith('find ') || text.includes('where is')) {
-    const target = text.replace('find the', '').replace('find a', '').replace('find', '').replace('where is', '').trim();
-    setHomingTarget(target);
-  } else if (text.includes('what is in front') || text.includes('what do you see')) {
-    if (!closestObject) speak('I do not see a supported object. Use your cane.');
-    else {
-      const o = closestObject;
-      speak(`${o.profile.label}, ${sideWord(o.pan)}, about ${o.distanceMeters.toFixed(1)} meters.`);
+function handleVoice(rawText) {
+  const text = rawText.toLowerCase().trim();
+  console.log('Voice Command received:', text);
+
+  // 1. Language Controls
+  if (text.includes('spanish') || text.includes('español')) {
+    setLanguage('es');
+    syncLanguageUI('es');
+    speak('Idioma cambiado a Español.');
+    return;
+  }
+  if (text.includes('french') || text.includes('français')) {
+    setLanguage('fr');
+    syncLanguageUI('fr');
+    speak('Langue définie sur le Français.');
+    return;
+  }
+  if (text.includes('german') || text.includes('deutsch')) {
+    setLanguage('de');
+    syncLanguageUI('de');
+    speak('Sprache auf Deutsch eingestellt.');
+    return;
+  }
+  if (text.includes('hindi') || text.includes('हिंदी')) {
+    setLanguage('hi');
+    syncLanguageUI('hi');
+    speak('भाषा हिन्दी पर सेट की गई।');
+    return;
+  }
+  if (text.includes('japanese') || text.includes('日本語')) {
+    setLanguage('ja');
+    syncLanguageUI('ja');
+    speak('言語を日本語に設定しました。');
+    return;
+  }
+  if (text.includes('chinese') || text.includes('中文')) {
+    setLanguage('zh');
+    syncLanguageUI('zh');
+    speak('语言已设置为中文。');
+    return;
+  }
+  if (text.includes('portuguese') || text.includes('português')) {
+    setLanguage('pt');
+    syncLanguageUI('pt');
+    speak('Idioma definido para Português.');
+    return;
+  }
+  if (text.includes('italian') || text.includes('italiano')) {
+    setLanguage('it');
+    syncLanguageUI('it');
+    speak('Lingua impostata su Italiano.');
+    return;
+  }
+  if (text.includes('arabic') || text.includes('عربية')) {
+    setLanguage('ar');
+    syncLanguageUI('ar');
+    speak('تم ضبط اللغة على العربية.');
+    return;
+  }
+  if (text.includes('english') || text.includes('ingles')) {
+    setLanguage('en');
+    syncLanguageUI('en');
+    speak('Language switched to English.');
+    return;
+  }
+
+  // 2. Voice Tone Settings
+  if (text.includes('crisp voice') || text.includes('bright voice') || text.includes('simple voice') || text.includes('tone crisp')) {
+    voiceTone = 'crisp';
+    localStorage.setItem('echolens_voice_tone', 'crisp');
+    syncToneUI('crisp');
+    speak('Voice tone set to simple and bright.');
+    return;
+  }
+  if (text.includes('natural voice') || text.includes('balanced voice') || text.includes('tone natural')) {
+    voiceTone = 'natural';
+    localStorage.setItem('echolens_voice_tone', 'natural');
+    syncToneUI('natural');
+    speak('Voice tone set to natural and balanced.');
+    return;
+  }
+  if (text.includes('gentle voice') || text.includes('smooth voice') || text.includes('tone gentle')) {
+    voiceTone = 'gentle';
+    localStorage.setItem('echolens_voice_tone', 'gentle');
+    syncToneUI('gentle');
+    speak('Voice tone set to gentle and smooth.');
+    return;
+  }
+
+  // 3. Volume Adjustments
+  const volMatch = text.match(/volume (?:to )?(\d+)/) || text.match(/set volume (?:to )?(\d+)/);
+  if (volMatch) {
+    const val = Math.min(100, Math.max(10, parseInt(volMatch[1], 10)));
+    volumeSetting = val;
+    localStorage.setItem('echolens_volume', val);
+    syncVolumeUI(val);
+    speak(`Volume set to ${val} percent.`);
+    return;
+  }
+  if (text.includes('volume up') || text.includes('louder') || text.includes('increase volume')) {
+    volumeSetting = Math.min(100, volumeSetting + 20);
+    localStorage.setItem('echolens_volume', volumeSetting);
+    syncVolumeUI(volumeSetting);
+    speak(`Volume ${volumeSetting} percent.`);
+    return;
+  }
+  if (text.includes('volume down') || text.includes('quieter') || text.includes('decrease volume') || text.includes('lower volume')) {
+    volumeSetting = Math.max(10, volumeSetting - 20);
+    localStorage.setItem('echolens_volume', volumeSetting);
+    syncVolumeUI(volumeSetting);
+    speak(`Volume ${volumeSetting} percent.`);
+    return;
+  }
+  if (text.includes('max volume') || text.includes('maximum volume') || text.includes('full volume')) {
+    volumeSetting = 100;
+    localStorage.setItem('echolens_volume', 100);
+    syncVolumeUI(100);
+    speak('Volume set to maximum.');
+    return;
+  }
+
+  // 4. Audio Filters / Detection Profiles
+  if (text.includes('detect all') || text.includes('all objects') || text.includes('filter all') || text.includes('everything')) {
+    currentAudioProfile = 'all';
+    syncProfileUI('all');
+    speak('Detection profile set to all objects.');
+    return;
+  }
+  if (text.includes('people only') || text.includes('only people') || text.includes('filter people') || text.includes('human mode')) {
+    currentAudioProfile = 'people';
+    syncProfileUI('people');
+    speak('Filter set to people only.');
+    return;
+  }
+  if (text.includes('furniture only') || text.includes('filter furniture')) {
+    currentAudioProfile = 'furniture';
+    syncProfileUI('furniture');
+    speak('Filter set to furniture only.');
+    return;
+  }
+  if (text.includes('vehicles only') || text.includes('traffic mode') || text.includes('filter vehicles')) {
+    currentAudioProfile = 'vehicles';
+    syncProfileUI('vehicles');
+    speak('Filter set to vehicles and traffic.');
+    return;
+  }
+  if (text.includes('indoor profile') || text.includes('indoor mode')) {
+    currentAudioProfile = 'indoor';
+    syncProfileUI('indoor');
+    speak('Indoor profile activated.');
+    return;
+  }
+  if (text.includes('outdoor profile') || text.includes('outdoor mode')) {
+    currentAudioProfile = 'outdoor';
+    syncProfileUI('outdoor');
+    speak('Outdoor profile activated.');
+    return;
+  }
+
+  // 5. Vibration / Haptics
+  if (text.includes('turn on vibration') || text.includes('enable haptic') || text.includes('enable vibration')) {
+    isHapticEnabled = true;
+    localStorage.setItem('echolens_haptics', 'true');
+    const hToggle = document.getElementById('haptic-toggle');
+    if (hToggle) hToggle.checked = true;
+    speak('Tactile haptic feedback enabled.');
+    return;
+  }
+  if (text.includes('turn off vibration') || text.includes('disable haptic') || text.includes('disable vibration')) {
+    isHapticEnabled = false;
+    localStorage.setItem('echolens_haptics', 'false');
+    const hToggle = document.getElementById('haptic-toggle');
+    if (hToggle) hToggle.checked = false;
+    speak('Tactile haptic feedback disabled.');
+    return;
+  }
+
+  // 6. Camera Controls
+  if (text.includes('flip camera') || text.includes('switch camera') || text.includes('front camera') || text.includes('rear camera') || text.includes('back camera')) {
+    if (text.includes('front')) facingMode = 'user';
+    else if (text.includes('rear') || text.includes('back')) facingMode = 'environment';
+    else facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    
+    if (isListening && !isDemoMode) {
+      stopListening({ silent: true }).then(() => startListening());
     }
-  } else if (text.includes('read text') || text.includes('read sign') || text.includes('read this')) {
+    speak(facingMode === 'user' ? 'Front camera activated.' : 'Rear camera activated.');
+    return;
+  }
+
+  // 7. Navigation Across Tabs
+  if (text.includes('open listen') || text.includes('go to listen') || text.includes('camera tab') || text.includes('listen view')) {
+    switchTab('view-listen', document.querySelector('.tab-button[data-target="view-listen"]'));
+    speak('Listen tab open.');
+    return;
+  }
+  if (text.includes('open read') || text.includes('go to read') || text.includes('text reader') || text.includes('read tab')) {
+    switchTab('view-read', document.querySelector('.tab-button[data-target="view-read"]'));
+    speak('Read tab open.');
+    return;
+  }
+  if (text.includes('open find') || text.includes('go to find') || text.includes('object search') || text.includes('find tab')) {
+    switchTab('view-find', document.querySelector('.tab-button[data-target="view-find"]'));
+    speak('Find tab open.');
+    return;
+  }
+  if (text.includes('open map') || text.includes('go to map') || text.includes('gps navigation') || text.includes('map tab')) {
+    switchTab('view-map', document.querySelector('.tab-button[data-target="view-map"]'));
+    openMapTab();
+    speak('Map tab open.');
+    return;
+  }
+  if (text.includes('open setting') || text.includes('go to setting') || text.includes('preferences')) {
+    switchTab('view-settings', document.querySelector('.tab-button[data-target="view-settings"]'));
+    speak('Settings tab open.');
+    return;
+  }
+
+  // 8. Vision & Audio Controls
+  if (text.includes('start listen') || text.includes('start vision') || text.includes('turn on camera') || text.includes('start spatial')) {
+    if (!isListening) startListening();
+    else speak('Spatial vision is already running.');
+    return;
+  }
+  if (text.includes('stop listen') || text.includes('stop vision') || text.includes('stop camera') || text === 'stop') {
+    if (isListening) stopListening();
+    if (isDemoMode) stopDemo();
+    return;
+  }
+  if (text.includes('start demo') || text.includes('play demo') || text.includes('run demo')) {
+    if (!isDemoMode) startDemo();
+    return;
+  }
+  if (text.includes('stop demo')) {
+    if (isDemoMode) stopDemo();
+    return;
+  }
+  if (text.includes('unmute') || text.includes('sound on') || text.includes('audio on')) {
+    if (isMuted) toggleMute();
+    else speak('Audio is already on.');
+    return;
+  }
+  if (text.includes('mute') || text.includes('silence') || text.includes('quiet')) {
+    if (!isMuted) toggleMute();
+    return;
+  }
+
+  // 9. Object Search & Homing
+  if (text.startsWith('find ') || text.includes('where is ') || text.includes('look for ') || text.includes('search for ')) {
+    const target = text
+      .replace('find the', '')
+      .replace('find a', '')
+      .replace('find', '')
+      .replace('where is the', '')
+      .replace('where is a', '')
+      .replace('where is', '')
+      .replace('look for the', '')
+      .replace('look for a', '')
+      .replace('look for', '')
+      .replace('search for', '')
+      .trim();
+    if (target) setHomingTarget(target);
+    return;
+  }
+  if (text.includes('stop find') || text.includes('cancel find') || text.includes('clear search') || text.includes('clear target')) {
+    setHomingTarget(null);
+    return;
+  }
+
+  // 10. AI Scene & Vision Tools
+  if (text.includes('describe scene') || text.includes('what do you see') || text.includes('what is in front')) {
+    if (closestObject) {
+      const label = translateObject(closestObject.class);
+      const side = translateDirection(sideWord(closestObject.pan));
+      speak(`${label}, ${side}, about ${closestObject.distanceMeters.toFixed(1)} meters.`);
+    } else {
+      runReadTool('scene');
+    }
+    return;
+  }
+  if (text.includes('read text') || text.includes('read sign') || text.includes('read document') || text.includes('read page')) {
     runReadTool('text');
-  } else if (text.includes('barcode') || text.includes('qr') || text.includes('scan code')) {
+    return;
+  }
+  if (text.includes('barcode') || text.includes('qr') || text.includes('scan code') || text.includes('product scan')) {
     runReadTool('barcode');
-  } else if (text.includes('color') || text.includes('what colour')) {
+    return;
+  }
+  if (text.includes('color') || text.includes('what colour') || text.includes('detect color')) {
     runReadTool('color');
-  } else if (text.includes('where am i') || text.includes('my location')) {
+    return;
+  }
+
+  // 11. Location & Places
+  if (text.includes('where am i') || text.includes('my location') || text.includes('what street') || text.includes('current location') || text.includes('speak location')) {
     speakLocation();
-  } else if (text.includes('nearby') || text.includes('what is around')) {
+    return;
+  }
+  if (text.includes('nearby') || text.includes('what is around') || text.includes('places around me')) {
     speakNearby();
-  } else if (text.includes('mute')) toggleMute();
+    return;
+  }
+
+  // Fallback
+  speak(`I heard: "${text}". Try saying "start listening", "find chair", "change language to Spanish", "volume 80", or "where am I".`);
+}
+
+// UI Synchronization Helpers for Voice Control
+function syncLanguageUI(lang) {
+  initVoices();
+  renderFindChips();
+  renderPrimary(closestObject);
+  const sel = document.getElementById('language-select');
+  if (sel) sel.value = lang;
+  const langItem = document.querySelector(`#lang-popover .popover-item[data-value="${lang}"]`);
+  if (langItem) {
+    document.querySelectorAll('#lang-popover .popover-item').forEach(b => b.classList.toggle('selected', b === langItem));
+    const lt = document.getElementById('lang-trigger-text');
+    if (lt) lt.textContent = (langItem.querySelector('span')?.textContent || langItem.textContent).replace('✓', '').trim();
+  }
+}
+
+function syncToneUI(tone) {
+  const sel = document.getElementById('voice-tone-select');
+  if (sel) sel.value = tone;
+  const toneItem = document.querySelector(`#tone-popover .popover-item[data-value="${tone}"]`);
+  if (toneItem) {
+    document.querySelectorAll('#tone-popover .popover-item').forEach(b => b.classList.toggle('selected', b === toneItem));
+    const tt = document.getElementById('tone-trigger-text');
+    if (tt) tt.textContent = (toneItem.querySelector('span')?.textContent || toneItem.textContent).replace('✓', '').trim();
+  }
+}
+
+function syncVolumeUI(val) {
+  const volCtrl = document.getElementById('volume-control');
+  const volVal = document.getElementById('volume-val');
+  if (volCtrl) volCtrl.value = val;
+  if (volVal) volVal.textContent = `${val}%`;
+}
+
+function syncProfileUI(prof) {
+  const sel = document.getElementById('audio-profile-select');
+  if (sel) sel.value = prof;
+  const profItem = document.querySelector(`#profile-popover .popover-item[data-value="${prof}"]`);
+  if (profItem) {
+    document.querySelectorAll('#profile-popover .popover-item').forEach(b => b.classList.toggle('selected', b === profItem));
+    const pt = document.getElementById('profile-trigger-text');
+    if (pt) pt.textContent = (profItem.querySelector('span')?.textContent || profItem.textContent).replace('✓', '').trim();
+  }
 }
 
 function setMapCard(kicker, title, sub) {
